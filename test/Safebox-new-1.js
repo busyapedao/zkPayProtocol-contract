@@ -10,6 +10,7 @@ describe('Safebox-old-1', function () {
     let safebox
     let usdt
     let busd
+    let nft
     let fee
 
     before(async function () {
@@ -35,6 +36,14 @@ describe('Safebox-old-1', function () {
         console.log('busd mint to accounts[0]', d(await busd.balanceOf(accounts[0].address), 18))
 		await busd.mint(accounts[1].address, m(1000, 18))
         console.log('busd mint to accounts[1]', d(await busd.balanceOf(accounts[1].address), 18))
+
+
+        const MockERC721 = await ethers.getContractFactory('MockERC721')
+        nft = await MockERC721.deploy('MockNFT', 'NFT')
+        await nft.deployed()
+        console.log('nft deployed:', nft.address)
+		await nft.mint(accounts[0].address, b('9988'))
+        console.log('busd mint to accounts[0]', await nft.ownerOf(b('9988')))
 
         
         const PasswordService = await ethers.getContractFactory('PasswordService')
@@ -63,6 +72,9 @@ describe('Safebox-old-1', function () {
     it('deposit', async function () {
         await usdt.transfer(safebox.address, m(100, 18))
         console.log('transfer ERC20 done')
+
+        await nft.transferFrom(accounts[0].address, safebox.address, b('9988'))
+        console.log('transfer ERC721 done')
 
         await accounts[0].sendTransaction({to: safebox.address, value: m(2, 18)})
         console.log('transfer ETH done')
@@ -123,6 +135,23 @@ describe('Safebox-old-1', function () {
 
         await safebox.withdrawETH(p.proof, amount, p.expiration, p.allhash)
         console.log('withdrawETH done')
+
+        await print()
+    })
+
+
+    it('withdrawERC721', async function () {
+        let psw = 'abc123'
+
+        let tokenAddr = nft.address
+        let tokenId = b('9988')
+        let datahash = utils.solidityKeccak256(['address','uint256'], [tokenAddr, tokenId]);
+        datahash = s(b(datahash).div(100)) //must be 254b, not 256b
+
+        let p = await getProof(psw, accounts[0].address, datahash)
+
+        await safebox.withdrawERC721(p.proof, tokenAddr, tokenId, p.expiration, p.allhash)
+        console.log('withdrawERC721 done')
 
         await print()
     })
@@ -193,11 +222,12 @@ describe('Safebox-old-1', function () {
             console.log('accounts[' + i + ']',
                 'safeboxAddr', safeboxAddr,
                 'usdt:', d(await usdt.balanceOf(accounts[i].address), 18), 
+                'eth:', d(await provider.getBalance(accounts[i].address), 18),
                 'safebox usdt:', d(await usdt.balanceOf(safeboxAddr), 18),
-                'eth:', d(await provider.getBalance(accounts[i].address), 18), 
                 'safebox eth:', d(await provider.getBalance(safeboxAddr), 18)
 			)
 		}
+        console.log('nft#9988 owner:', await nft.ownerOf(b('9988')))
         console.log('')
     }
 
