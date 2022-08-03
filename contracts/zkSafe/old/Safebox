@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: GPL-3.0
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./verifier.sol";
+import "hardhat/console.sol";
+
+contract Safebox is Ownable {
+    using SafeERC20 for IERC20;
+
+    event SetBoxhash(uint indexed boxhash);
+
+    event WithdrawERC20(address indexed tokenAddr, uint amount);
+
+    event WithdrawERC721(address indexed tokenAddr, uint tokenId);
+
+    event WithdrawETH(uint tokenId);
+
+    Verifier verifier = new Verifier();
+
+    uint public boxhash;
+
+    address public factory;
+
+    mapping(uint => bool) internal usedProof;
+
+    constructor() {
+        factory = msg.sender;
+    }
+
+    // called once by the factory at time of deployment
+    function initialize(
+        address initOwner,
+        uint[8] memory proof,
+        uint newBoxhash,
+        uint expiration,
+        uint allhash
+    ) external {
+        require(msg.sender == factory, "Safebox::initialize: FORBIDDEN"); // sufficient check
+        require(
+            block.timestamp < expiration,
+            "Safebox::initialize: expiration"
+        );
+        require(!usedProof[proof[0]], "Safebox::initialize: proof used");
+        require(
+            verifyProof(proof, newBoxhash, address(0), 0, expiration, allhash),
+            "Safebox::initialize: verifyProof fail"
+        );
+
+        usedProof[proof[0]] = true;
+
+        boxhash = newBoxhash;
+
+        emit SetBoxhash(newBoxhash);
+
+        _transferOwnership(initOwner);
+    }
+
+    function setBoxhash(
+        uint[8] memory proof1,
+        uint[8] memory proof2,
+        uint newBoxhash,
+        uint expiration,
+        uint allhash1,
+        uint allhash2
+    ) public onlyOwner {
+        require(
+            block.timestamp < expiration,
+            "Safebox::initialize: expiration"
+        );
+
+        if (boxhash != 0) {
+            // check old boxhash
+            require(!usedProof[proof1[0]], "Safebox::setBoxhash: proof1 used");
+            require(
+                verifyProof(
+                    proof1,
+                    boxhash,
+                    address(0),
+                    0,
+                    expiration,
+                    allhash1
+                ),
+                "Safebox::setBoxhash: verifyProof1 fail"
+            );
+
+            usedProof[proof1[0]] = true;
+        }
+
+        require(!usedProof[proof2[0]], "Safebox::setBoxhash: proof2 used");
+        require(
+            verifyProof(
+                proof2,
+                newBoxhash,
+                address(0),
+                0,
+                expiration,
+                allhash2
+            ),
+            "Safebox::setBoxhash: verifyProof2 fail"
+        );
+
+        usedProof[proof2[0]] = true;
+
+        boxhash = newBoxhash;
+
+        emit SetBoxhash(newBoxhash);
+    }
+
+    function withdrawETH(
+        uint[8] memory proof,
+        uint amount,
+        uint expiration,
+        uint allhash
+    ) public onlyOwner {
+        require(
+            block.timestamp < expiration,
+            "Safebox::withdrawETH: expiration"
+        );
+        require(!usedProof[proof[0]], "Safebox::withdrawETH: proof used");
+        require(
+            verifyProof(
+                proof,
+                boxhash,
+                address(0),
+                amount,
+                expiration,
+                allhash
+            ),
+            "Safebox::withdrawETH: verifyProof fail"
+        );
+
+        usedProof[proof[0]] = true;
+
+        payable(owner()).transfer(amount);
+
+        emit WithdrawETH(amount);
+    }
+
+    function withdrawERC20(
+        uint[8] memory proof,
+        address tokenAddr,
+        uint amount,
+        uint expiration,
+        uint allhash
+    ) public onlyOwner {
+        require(
+            block.timestamp < expiration,
+            "Safebox::withdrawERC20: expiration"
+        );
+        require(!usedProof[proof[0]], "Safebox::withdrawERC20: proof used");
+        require(
+            verifyProof(proof, boxhash, tokenAddr, amount, expiration, allhash),
+            "Safebox::withdrawERC20: verifyProof fail"
+        );
+
+        usedProof[proof[0]] = true;
+
+        IERC20(tokenAddr).safeTransfer(owner(), amount);
+
+        emit WithdrawERC20(tokenAddr, amount);
+    }
+
+    function withdrawERC721(
+        uint[8] memory proof,
+        address tokenAddr,
+        uint tokenId,
+        uint expiration,
+        uint allhash
+    ) public onlyOwner {
+        require(
+            block.timestamp < expiration,
+            "Safebox::withdrawERC721: expiration"
+        );
+        require(!usedProof[proof[0]], "Safebox::withdrawERC721: proof used");
+        require(
+            verifyProof(
+                proof,
+                boxhash,
+                tokenAddr,
+                tokenId,
+                expiration,
+                allhash
+            ),
+            "Safebox::withdrawERC721: verifyProof fail"
+        );
+
+        usedProof[proof[0]] = true;
+
+        IERC721(tokenAddr).transferFrom(address(this), owner(), tokenId);
+
+        emit WithdrawERC721(tokenAddr, tokenId);
+    }
+
+    /////////// util ////////////
+
+    function verifyProof(
+        uint[8] memory proof,
+        uint _boxhash,
+        address tokenAddr,
+        uint amount,
+        uint expiration,
+        uint allhash
+    ) internal view returns (bool) {
+        return
+            verifier.verifyProof(
+                [proof[0], proof[1]],
+                [[proof[2], proof[3]], [proof[4], proof[5]]],
+                [proof[6], proof[7]],
+                [_boxhash, uint160(tokenAddr), amount, expiration, allhash]
+            );
+    }
+}

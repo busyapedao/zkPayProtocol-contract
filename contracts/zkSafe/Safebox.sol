@@ -3,141 +3,172 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "./verifier.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "../pws/PasswordService.sol";
+import "./SafeboxFactory.sol";
 import "hardhat/console.sol";
 
-contract Safebox is Ownable {
-
+contract Safebox is Context {
     using SafeERC20 for IERC20;
 
-    event SetBoxhash(
-        uint indexed boxhash
-    );
-  
-    event Withdraw(
-        address indexed to,
-        address indexed tokenAddr,
-        uint amount
-    );
+    PasswordService public pws;
 
-    event Call(
-        address indexed contractAddr,
-        bytes sigData,
-        bytes returnData
+    event WithdrawERC20(address indexed tokenAddr, uint amount);
+
+    event WithdrawERC721(address indexed tokenAddr, uint tokenId);
+
+    event WithdrawETH(uint tokenId);
+
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
     );
-
-    Verifier verifier = new Verifier();
-
-    uint public boxhash;
 
     address public factory;
 
-    mapping(uint => bool) internal usedProof;
+    address private _owner;
 
+    bool isInit;
 
-    constructor() {
-        factory = msg.sender;
+    constructor() {}
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        _checkOwner();
+        _;
     }
 
+    /**
+     * @dev Returns the address of the current owner.
+     */
+    function owner() public view virtual returns (address) {
+        return _owner;
+    }
 
-    // called once by the factory at time of deployment
-    function initialize(
-        address initOwner, 
+    /**
+     * @dev Throws if the sender is not the owner.
+     */
+    function _checkOwner() internal view virtual {
+        require(owner() == _msgSender(), "Ownable: caller is not the owner");
+    }
+
+    /**
+     * @dev Transfers ownership of the contract to a new account (`newOwner`).
+     * Internal function without access restriction.
+     */
+    function _transferOwnership(address newOwner) internal virtual {
+        address oldOwner = _owner;
+        _owner = newOwner;
+        emit OwnershipTransferred(oldOwner, newOwner);
+    }
+
+    function init(address newOwner) external {
+        require(!isInit, "function forbidden");
+        isInit = true;
+        factory = _msgSender();
+        pws = SafeboxFactory(factory).pws();
+        _transferOwnership(newOwner);
+    }
+
+    function transferOwnership(
         uint[8] memory proof,
-        uint newBoxhash
-    ) external {
-        require(msg.sender == factory, 'Safebox::initialize: FORBIDDEN'); // sufficient check
-
-        require(!usedProof[proof[0]], "Safebox::initialize: proof used");
-        require(verifyProof(proof, newBoxhash), "Safebox::initialize: verifyProof fail");
-
-        usedProof[proof[0]] = true;
-
-        boxhash = newBoxhash;
-
-        emit SetBoxhash(newBoxhash);
-
-        _transferOwnership(initOwner);
-    }
-
-
-    function setBoxhash(
-        uint[8] memory proof1,
-        uint[8] memory proof2,
-        uint newBoxhash
-    ) public onlyOwner {
-
-        if (boxhash != 0) { 
-            // check old boxhash 
-            require(!usedProof[proof1[0]], "Safebox::setBoxhash: proof1 used");
-            require(verifyProof(proof1, boxhash), "Safebox::setBoxhash: verifyProof1 fail");
-
-            usedProof[proof1[0]] = true;
-        }
-
-        require(!usedProof[proof2[0]], "Safebox::setBoxhash: proof2 used");
-        require(verifyProof(proof2, newBoxhash), "Safebox::setBoxhash: verifyProof2 fail");
-
-        usedProof[proof2[0]] = true;
-
-        boxhash = newBoxhash;
-
-        emit SetBoxhash(newBoxhash);
-    }
-
-
-    function call(
-        uint[8] memory proof,
-        address contractAddr,
-        bytes calldata sigData
-    ) public onlyOwner {
-        require(!usedProof[proof[0]], "Safebox::call: proof used");
-        require(verifyProof(proof, boxhash), "Safebox::call: verifyProof fail");
-
-        usedProof[proof[0]] = true;
-
-        (bool success, bytes memory returnData) = contractAddr.call(sigData);
-        require(success, "Safebox::call: call fail");
-
-        emit Call(contractAddr, sigData, returnData);
-    }
-    
-
-    function batchCall(
-        uint[8] memory proof,
-        address[] calldata contractAddrArr,
-        bytes[] calldata sigDataArr
-    ) public onlyOwner {
-        require(contractAddrArr.length == sigDataArr.length, "Safebox::batchCall: params error");
-        require(!usedProof[proof[0]], "Safebox::batchCall: proof used");
-        require(verifyProof(proof, boxhash), "Safebox::batchCall: verifyProof fail");
-
-        usedProof[proof[0]] = true;
-
-        for (uint i=0; i<contractAddrArr.length; i++) {
-            address contractAddr = contractAddrArr[i];
-            bytes memory sigData = sigDataArr[i];
-            (bool success, bytes memory returnData) = contractAddr.call(sigData);
-            require(success, "Safebox::call: call fail");
-            emit Call(contractAddr, sigData, returnData);
-        }
-    }
-
-
-
-    /////////// util ////////////
-
-    function verifyProof(
-        uint[8] memory proof,
-        uint _boxhash
-    ) internal view returns (bool) {
-        return verifier.verifyProof(
-            [proof[0], proof[1]],
-            [[proof[2], proof[3]], [proof[4], proof[5]]],
-            [proof[6], proof[7]],
-            [_boxhash]
+        address newOwner,
+        uint expiration,
+        uint allhash
+    ) external payable onlyOwner {
+        require(
+            newOwner != address(0),
+            "Ownable: new owner is the zero address"
         );
+
+        uint datahash = uint(uint160(newOwner));
+        bool success = pws.verify(
+            owner(),
+            proof,
+            datahash,
+            expiration,
+            allhash
+        );
+        require(success, "Safebox::transferOwnership: verify fail");
+
+        SafeboxFactory(factory).changeSafeboxOwner{value: msg.value}(
+            owner(),
+            newOwner
+        );
+
+        _transferOwnership(newOwner);
     }
 
+    function withdrawETH(
+        uint[8] memory proof,
+        uint amount,
+        uint expiration,
+        uint allhash
+    ) external onlyOwner {
+        //must be 254b, not 256b
+        uint datahash = uint(keccak256(abi.encodePacked(amount))) / 100;
+        bool success = pws.verify(
+            owner(),
+            proof,
+            datahash,
+            expiration,
+            allhash
+        );
+        require(success, "Safebox::withdrawETH: verify fail");
+
+        payable(owner()).transfer(amount);
+
+        emit WithdrawETH(amount);
+    }
+
+    function withdrawERC20(
+        uint[8] memory proof,
+        address tokenAddr,
+        uint amount,
+        uint expiration,
+        uint allhash
+    ) external onlyOwner {
+        //must be 254b, not 256b
+        uint datahash = uint(keccak256(abi.encodePacked(tokenAddr, amount))) /
+            100;
+        bool success = pws.verify(
+            owner(),
+            proof,
+            datahash,
+            expiration,
+            allhash
+        );
+        require(success, "Safebox::withdrawERC20: verify fail");
+
+        IERC20(tokenAddr).safeTransfer(owner(), amount);
+
+        emit WithdrawERC20(tokenAddr, amount);
+    }
+
+    function withdrawERC721(
+        uint[8] memory proof,
+        address tokenAddr,
+        uint tokenId,
+        uint expiration,
+        uint allhash
+    ) external onlyOwner {
+        //must be 254b, not 256b
+        uint datahash = uint(keccak256(abi.encodePacked(tokenAddr, tokenId))) /
+            100;
+        bool success = pws.verify(
+            owner(),
+            proof,
+            datahash,
+            expiration,
+            allhash
+        );
+        require(success, "Safebox::withdrawERC721: verify fail");
+
+        IERC721(tokenAddr).transferFrom(address(this), owner(), tokenId);
+
+        emit WithdrawERC721(tokenAddr, tokenId);
+    }
 }
