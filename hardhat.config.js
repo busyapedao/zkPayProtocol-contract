@@ -62,6 +62,16 @@ module.exports = {
 				process.env.ETH_PK_2
 			]
 		},
+		metis_testnet: {
+			url: 'https://stardust.metis.io/?owner=588',
+			chainId: 588,
+			from: process.env.ETH_ADDRESS_0,
+			accounts: [
+				process.env.ETH_PK_0,
+				process.env.ETH_PK_1,
+				process.env.ETH_PK_2
+			]
+		},
   },
   solidity: '0.8.9',
 };
