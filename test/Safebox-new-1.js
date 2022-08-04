@@ -89,7 +89,7 @@ describe('Safebox-old-1', function () {
         let datahash = '0'
 
         let p = await getProof(psw, accounts[0].address, datahash)
-            
+
         //need fee
         await passwordService.resetPassword(p.proof, 0, 0, p.proof, p.zkhash, p.expiration, p.allhash, {value: fee})
         console.log('resetPassword done')
