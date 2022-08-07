@@ -37,7 +37,7 @@ template Main() {
     poseidon2.inputs[3] <== in[4];  //chainId
     out[1] <== in[2]; //datahash
     out[2] <== in[3]; //expiration
-    out[3] <== in[4]; //expiration
+    out[3] <== in[4]; //chainId
     out[4] <== poseidon2.out; //allhash
 }
 
