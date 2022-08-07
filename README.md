@@ -4,7 +4,7 @@
 
 
 ## Ethereum Password Service
-### EPS contract binding password hash to wallet address.
+#### EPS contract binding password hash to wallet address.
 <br>
 <div align="center"><img src="./doc/eps.png"></div>
 <br>
@@ -18,7 +18,7 @@ And, datahash\expiration\chainId are added to ZK Circuit, make (ZK) Password to 
 <br>
 
 ## Safebox
-### If privatekey is stolen, Safebox is still safe.
+#### If privatekey is stolen, Safebox is still safe.
 <br>
 <div align="center"><img src="./doc/safebox.png"></div>
 <br>
