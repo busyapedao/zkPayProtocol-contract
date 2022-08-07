@@ -36,8 +36,15 @@ The caller must be Safebox's owner.</p>
 <ul>
 <li>Where is the password store?
 <p>In your mind.</p>
-
+</li>
 <li>If the project fail or be hacked, is my Safebox safe?
 <p>Yes, the Safebox is Smart Contract Wallet, you're the only owner of the contract, it's running forever and no one can control it except you.</p>
+</li>
+</ul>
+<br>
+<br>
 
+## Hackthon & Grant
+<p>2022 BNBChain Hackthon 1st at DAO Track ([zkPayroll](https://dorahacks.io/bnb/1/top))</p>
+<p>2022 ETHShanghai Hackathon Sponser Track Winner ([zkSafebox](https://gitcoin.co/hackathon/ethshanghai/projects/?org=abridged))</p>
 </ul>
